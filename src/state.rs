@@ -31,6 +31,8 @@ pub struct VerboseState {
     pub turn: Turn,
 }
 
+const CARDS_CNT_WHEN_TAKING_FROM_STACK: usize = 3;
+
 impl VerboseState {
     pub fn following_states(&self) -> Vec<Self> {
         let mut res = vec![];
@@ -57,17 +59,17 @@ impl VerboseState {
             }
 
             if self.table_stack.cards[i] != 0 {
+                // Can't put weaker cards
                 break;
             }
         }
 
         {
-            // Take 3 top cards
+            // Take up to 3 top cards
             let mut s = self.clone();
-            const CARDS_CNT_WHEN_TAKING_FROM_STACK: u8 = 3;
-            let mut to_remove_yet = CARDS_CNT_WHEN_TAKING_FROM_STACK;
+            let cards_taken_cnt = u8::try_from(CARDS_CNT_WHEN_TAKING_FROM_STACK).unwrap();
+            let mut to_remove_yet = cards_taken_cnt;
             for i in 0..CardsHand::CARD_TYPES {
-                // TODO: forbid taking the last nine
                 let rm_cur = min(to_remove_yet, s.table_stack.cards[i]);
                 to_remove_yet -= rm_cur;
                 s.table_stack.cards[i] -= rm_cur;
@@ -77,7 +79,7 @@ impl VerboseState {
                 }
             }
             s.turn = s.turn.next();
-            if to_remove_yet < CARDS_CNT_WHEN_TAKING_FROM_STACK {
+            if to_remove_yet < cards_taken_cnt {
                 res.push(s);
             }
         }
@@ -103,11 +105,64 @@ impl VerboseState {
         }
 
         if let Some(i) = top_card {
-            // TODO
-            // if selff.table_stack.cards
+            // Put 1 card
+            let mut s = selff.clone();
+            s.get_current_hand_mut().cards[i] += 1;
+            s.table_stack.cards[i] -= 1;
+            res.push(s);
+
+            // Put 4 cards (or 3 nines)
+            let all_cards_cnt = u8::try_from(CardsHand::card_idx_to_cnt(i)).unwrap();
+            if selff.table_stack.cards[i] == all_cards_cnt {
+                let mut s = selff.clone();
+                s.get_current_hand_mut().cards[i] += all_cards_cnt;
+                s.table_stack.cards[i] -= all_cards_cnt;
+                res.push(s);
+            }
         }
 
-        todo!();
+        // Take up to 3 top cards
+        {
+            fn process_one_card(
+                res: &mut Vec<VerboseState>,
+                vs: &mut VerboseState,
+                top_card: usize,
+                all_cards_req: bool,
+                mut cards_left: usize,
+            ) {
+                cards_left -= 1;
+                for i in 0..=top_card {
+                    if vs.get_current_hand().cards[i] == 0 {
+                        continue;
+                    }
+                    vs.get_current_hand_mut().cards[i] -= 1;
+                    vs.table_stack.cards[i] += 1;
+
+                    if cards_left == 0 || !all_cards_req {
+                        res.push(vs.clone());
+                    }
+
+                    if cards_left > 0 {
+                        process_one_card(res, vs, i, all_cards_req, cards_left);
+                    }
+
+                    vs.table_stack.cards[i] -= 1;
+                    vs.get_current_hand_mut().cards[i] += 1;
+                }
+            }
+
+            let (top_card, all_cards_req) = match top_card {
+                Some(c) => (c, true),
+                None => (CardsHand::CARD_TYPES - 1, false),
+            };
+            process_one_card(
+                &mut res,
+                &mut selff.clone(),
+                top_card,
+                all_cards_req,
+                CARDS_CNT_WHEN_TAKING_FROM_STACK,
+            );
+        }
 
         res
     }
@@ -129,13 +184,13 @@ impl VerboseState {
 
 #[derive(Clone)]
 pub struct CardsHand {
-    /// Sorted as: [Aces, Kings, Queens, Jacks, Tens, Nines]
+    /// Sorted as: [Aces, Kings, Queens, Jacks, Tens, Nines].
+    /// There are up to 3 nines (assuming one is always on the table).
     pub cards: [u8; Self::CARD_TYPES],
 }
 
 impl CardsHand {
     const CARD_TYPES: usize = 6;
-    const NINES_IDX: usize = 5;
 }
 
 // ================ CONVERSIONS ======================
@@ -220,8 +275,6 @@ impl From<State> for VerboseState {
             vs.table_stack.cards[i] = card_distr.2;
         }
 
-        vs.table_stack.cards[CardsHand::NINES_IDX] += 1;
-
         vs
     }
 }
@@ -234,8 +287,6 @@ impl TryFrom<VerboseState> for State {
             cards: [0; 3],
             turn: vs.turn,
         };
-
-        vs.table_stack.cards[CardsHand::NINES_IDX] -= 1;
 
         for i in 0..CardsHand::CARD_TYPES {
             let key = (
@@ -272,7 +323,8 @@ impl VerboseState {
                 cards: [2, 2, 2, 2, 2, 1],
             },
             table_stack: CardsHand {
-                cards: [0, 0, 0, 0, 0, 1],
+                // cards: [0, 0, 0, 0, 0, 1],
+                cards: [0, 0, 0, 0, 0, 0],
             },
             turn: Turn::Player,
         }
@@ -294,8 +346,6 @@ impl VerboseState {
             vs.opponent_hand.cards[i] = card_distr.1;
             vs.table_stack.cards[i] = card_distr.2;
         }
-
-        vs.table_stack.cards[CardsHand::NINES_IDX] += 1;
 
         vs
     }

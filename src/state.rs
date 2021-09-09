@@ -2,13 +2,13 @@ use lazy_static::lazy_static;
 use rand::{seq::SliceRandom, thread_rng};
 use std::{cmp::min, collections::HashMap, convert::TryFrom};
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct State {
     cards: [u8; 3],
     turn: Turn,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum Turn {
     Player,
     Opponent,
@@ -23,7 +23,7 @@ impl Turn {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VerboseState {
     pub player_hand: CardsHand,
     pub opponent_hand: CardsHand,
@@ -36,6 +36,10 @@ const CARDS_CNT_WHEN_TAKING_FROM_STACK: usize = 3;
 impl VerboseState {
     pub fn following_states(&self) -> Vec<Self> {
         let mut res = vec![];
+        if self.is_game_finished() {
+            return res;
+        }
+
         let cur_hand = self.get_current_hand();
 
         for i in 0..CardsHand::CARD_TYPES {
@@ -67,8 +71,9 @@ impl VerboseState {
         {
             // Take up to 3 top cards
             let mut s = self.clone();
-            let cards_taken_cnt = u8::try_from(CARDS_CNT_WHEN_TAKING_FROM_STACK).unwrap();
-            let mut to_remove_yet = cards_taken_cnt;
+            let cards_cnt_when_taking_from_stack =
+                u8::try_from(CARDS_CNT_WHEN_TAKING_FROM_STACK).unwrap();
+            let mut to_remove_yet = cards_cnt_when_taking_from_stack;
             for i in 0..CardsHand::CARD_TYPES {
                 let rm_cur = min(to_remove_yet, s.table_stack.cards[i]);
                 to_remove_yet -= rm_cur;
@@ -79,7 +84,7 @@ impl VerboseState {
                 }
             }
             s.turn = s.turn.next();
-            if to_remove_yet < cards_taken_cnt {
+            if to_remove_yet < cards_cnt_when_taking_from_stack {
                 res.push(s);
             }
         }
@@ -109,7 +114,9 @@ impl VerboseState {
             let mut s = selff.clone();
             s.get_current_hand_mut().cards[i] += 1;
             s.table_stack.cards[i] -= 1;
-            res.push(s);
+            if !s.is_game_finished() {
+                res.push(s);
+            }
 
             // Put 4 cards (or 3 nines)
             let all_cards_cnt = u8::try_from(CardsHand::card_idx_to_cnt(i)).unwrap();
@@ -117,7 +124,9 @@ impl VerboseState {
                 let mut s = selff.clone();
                 s.get_current_hand_mut().cards[i] += all_cards_cnt;
                 s.table_stack.cards[i] -= all_cards_cnt;
-                res.push(s);
+                if !s.is_game_finished() {
+                    res.push(s);
+                }
             }
         }
 
@@ -138,7 +147,7 @@ impl VerboseState {
                     vs.get_current_hand_mut().cards[i] -= 1;
                     vs.table_stack.cards[i] += 1;
 
-                    if cards_left == 0 || !all_cards_req {
+                    if !vs.is_game_finished() && (cards_left == 0 || !all_cards_req) {
                         res.push(vs.clone());
                     }
 
@@ -167,6 +176,11 @@ impl VerboseState {
         res
     }
 
+    pub fn is_game_finished(&self) -> bool {
+        let zeros = [0; 6];
+        self.player_hand.cards == zeros || self.opponent_hand.cards == zeros
+    }
+
     fn get_current_hand(&self) -> &CardsHand {
         match self.turn {
             Turn::Player => &self.player_hand,
@@ -182,7 +196,7 @@ impl VerboseState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CardsHand {
     /// Sorted as: [Aces, Kings, Queens, Jacks, Tens, Nines].
     /// There are up to 3 nines (assuming one is always on the table).
@@ -282,7 +296,7 @@ impl From<State> for VerboseState {
 impl TryFrom<VerboseState> for State {
     type Error = &'static str;
 
-    fn try_from(mut vs: VerboseState) -> Result<Self, Self::Error> {
+    fn try_from(vs: VerboseState) -> Result<Self, Self::Error> {
         let mut s = State {
             cards: [0; 3],
             turn: vs.turn,
@@ -323,13 +337,13 @@ impl VerboseState {
                 cards: [2, 2, 2, 2, 2, 1],
             },
             table_stack: CardsHand {
-                // cards: [0, 0, 0, 0, 0, 1],
                 cards: [0, 0, 0, 0, 0, 0],
             },
             turn: Turn::Player,
         }
     }
 
+    /// Might return state unreachable from initial one.
     pub fn random() -> Self {
         let mut rng = thread_rng();
         let mut vs = Self {

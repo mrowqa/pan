@@ -8,7 +8,7 @@ pub struct State {
     turn: Turn,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub enum Turn {
     Player,
     Opponent,
@@ -23,6 +23,7 @@ impl Turn {
     }
 }
 
+// TODO(consider): make "UncheckedVerboseState". Then "VerboseState" is simply a newtype with Deref.
 #[derive(Clone, Debug)]
 pub struct VerboseState {
     pub player_hand: CardsHand,
@@ -177,8 +178,7 @@ impl VerboseState {
     }
 
     pub fn is_game_finished(&self) -> bool {
-        let zeros = [0; 6];
-        self.player_hand.cards == zeros || self.opponent_hand.cards == zeros
+        self.player_hand == CardsHand::EMPTY || self.opponent_hand == CardsHand::EMPTY
     }
 
     fn get_current_hand(&self) -> &CardsHand {
@@ -196,7 +196,7 @@ impl VerboseState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CardsHand {
     /// Sorted as: [Aces, Kings, Queens, Jacks, Tens, Nines].
     /// There are up to 3 nines (assuming one is always on the table).
@@ -273,9 +273,9 @@ impl CardsHand {
 impl From<State> for VerboseState {
     fn from(s: State) -> Self {
         let mut vs = VerboseState {
-            player_hand: CardsHand::empty(),
-            opponent_hand: CardsHand::empty(),
-            table_stack: CardsHand::empty(),
+            player_hand: CardsHand::EMPTY,
+            opponent_hand: CardsHand::EMPTY,
+            table_stack: CardsHand::EMPTY,
             turn: s.turn,
         };
 
@@ -293,10 +293,10 @@ impl From<State> for VerboseState {
     }
 }
 
-impl TryFrom<VerboseState> for State {
+impl TryFrom<&VerboseState> for State {
     type Error = &'static str;
 
-    fn try_from(vs: VerboseState) -> Result<Self, Self::Error> {
+    fn try_from(vs: &VerboseState) -> Result<Self, Self::Error> {
         let mut s = State {
             cards: [0; 3],
             turn: vs.turn,
@@ -320,11 +320,17 @@ impl TryFrom<VerboseState> for State {
     }
 }
 
+impl TryFrom<VerboseState> for State {
+    type Error = &'static str;
+
+    fn try_from(vs: VerboseState) -> Result<Self, Self::Error> {
+        TryFrom::try_from(&vs)
+    }
+}
+
 // ===================== CONSTRUCTORS ===================
 impl CardsHand {
-    pub fn empty() -> Self {
-        Self { cards: [0; 6] }
-    }
+    pub const EMPTY: Self = Self { cards: [0; 6] };
 }
 
 impl VerboseState {
@@ -347,9 +353,9 @@ impl VerboseState {
     pub fn random() -> Self {
         let mut rng = thread_rng();
         let mut vs = Self {
-            player_hand: CardsHand::empty(),
-            opponent_hand: CardsHand::empty(),
-            table_stack: CardsHand::empty(),
+            player_hand: CardsHand::EMPTY,
+            opponent_hand: CardsHand::EMPTY,
+            table_stack: CardsHand::EMPTY,
             turn: Turn::Player,
         };
 

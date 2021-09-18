@@ -50,6 +50,6 @@ pub fn foo() {
 }
 
 pub fn bar() {
-    let start_state: State = VerboseState::random().try_into().unwrap();
-    let _optimal = Optimal::new(start_state);
+    let start_state = VerboseState::random();
+    let _optimal = Optimal::new(&start_state);
 }

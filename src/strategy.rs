@@ -1,25 +1,20 @@
+use crate::state::{CardsHand, Move, State, Turn, VerboseState};
+use rand::{seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     convert::{TryFrom, TryInto},
 };
 
-use crate::state::{CardsHand, State, Turn, VerboseState};
-use rand::{seq::SliceRandom, thread_rng};
-
 pub trait Strategy {
-    fn get_next_move(state: State) -> Option<State>;
+    fn get_next_move(&self, state: &VerboseState) -> Option<Move>;
 }
 
 pub struct Random;
 
 impl Strategy for Random {
-    fn get_next_move(state: State) -> Option<State> {
-        let vs: VerboseState = state.into();
+    fn get_next_move(&self, state: &VerboseState) -> Option<Move> {
         let mut rng = thread_rng();
-        vs.following_states()
-            .as_slice()
-            .choose(&mut rng)
-            .map(|vs| vs.try_into().unwrap())
+        state.possible_moves().as_slice().choose(&mut rng).cloned()
     }
 }
 
@@ -31,28 +26,30 @@ pub struct Optimal {
 type OptimalWinningStates = BTreeMap<Turn, HashSet<State>>;
 
 impl Optimal {
-    pub fn new(start_state: State) -> Self {
+    // Consider: paralelize construction? Or maybe keep some cache of states?
+    pub fn new(start_state: &VerboseState) -> Self {
         let mut reachable_states = HashSet::new();
         let mut winning_states = OptimalWinningStates::new();
         let mut queue = VecDeque::new();
 
         // Phase 1: find all reachable states.
+        let start_state = start_state.try_into().expect("Valid start_state"); // expect: Not ideal, but should be good enough.
         queue.push_back(start_state);
         reachable_states.insert(start_state);
         // No need to classify start_state as winning or losing - there is no move from such starting state anyway.
         while let Some(s) = queue.pop_front() {
-            let following_states = VerboseState::from(s).following_states();
-            for vs in following_states {
-                let s = State::try_from(&vs).unwrap();
+            let following_states = VerboseState::from(s).possible_moves();
+            for mov in following_states {
+                let s = State::try_from(&mov.state).unwrap();
                 if reachable_states.contains(&s) {
                     continue;
                 }
                 reachable_states.insert(s);
                 queue.push_back(s);
 
-                if vs.player_hand == CardsHand::EMPTY {
+                if mov.state.player_hand == CardsHand::EMPTY {
                     winning_states.entry(Turn::Player).or_default().insert(s);
-                } else if vs.opponent_hand == CardsHand::EMPTY {
+                } else if mov.state.opponent_hand == CardsHand::EMPTY {
                     winning_states.entry(Turn::Opponent).or_default().insert(s);
                 }
             }
@@ -82,13 +79,13 @@ impl Optimal {
             }
 
             let vs = VerboseState::from(s);
-            let fs = vs.following_states();
+            let fs = vs.possible_moves();
             winning_cnts.clear();
 
-            for vs2 in &fs {
-                let s2 = State::try_from(vs2).unwrap();
+            for mov in &fs {
+                let next_s = State::try_from(&mov.state).unwrap();
                 for t in [Turn::Player, Turn::Opponent] {
-                    if winning_states[&t].contains(&s2) {
+                    if winning_states[&t].contains(&next_s) {
                         *winning_cnts.entry(t).or_default() += 1;
                     }
                 }
@@ -108,25 +105,32 @@ impl Optimal {
             }
         }
 
-        // TODO: remove this printing. ============
-        let all = reachable_states.len();
-        let winning_p = winning_states[&Turn::Player].len();
-        let winning_o = winning_states[&Turn::Opponent].len();
-        let draws = all - winning_o - winning_p;
-        println!(
-            "All: {}, winning_p: {}, winning_o: {}, draws: {}",
-            all, winning_p, winning_o, draws,
-        );
-        // TODO: ==================================
-
         Self { winning_states }
     }
 }
 
 impl Strategy for Optimal {
-    fn get_next_move(state: State) -> Option<State> {
-        let vs: VerboseState = state.into();
-        let _fs = vs.following_states();
-        todo!()
+    fn get_next_move(&self, state: &VerboseState) -> Option<Move> {
+        let (mut win, mut draw, mut lose) = (vec![], vec![], vec![]);
+        let moves = state.possible_moves();
+        for m in moves {
+            let s = State::try_from(&m.state).unwrap();
+            if self.winning_states[&state.turn].contains(&s) {
+                win.push(m);
+            } else if self.winning_states[&state.turn.next()].contains(&s) {
+                lose.push(m);
+            } else {
+                draw.push(m);
+            }
+        }
+
+        let mut rng = thread_rng();
+        if let m @ Some(_) = win.choose(&mut rng) {
+            m.cloned()
+        } else if let m @ Some(_) = draw.choose(&mut rng) {
+            m.cloned()
+        } else {
+            lose.choose(&mut rng).cloned()
+        }
     }
 }

@@ -32,10 +32,23 @@ pub struct VerboseState {
     pub turn: Turn,
 }
 
+#[derive(Clone)]
+pub struct Move {
+    pub state: VerboseState,
+    pub desc: MoveDescription,
+}
+
+#[derive(Clone)]
+pub enum MoveDescription {
+    PutSingle(usize),
+    PutAll(usize),
+    Take,
+}
+
 const CARDS_CNT_WHEN_TAKING_FROM_STACK: usize = 3;
 
 impl VerboseState {
-    pub fn following_states(&self) -> Vec<Self> {
+    pub fn possible_moves(&self) -> Vec<Move> {
         let mut res = vec![];
         if self.is_game_finished() {
             return res;
@@ -50,7 +63,10 @@ impl VerboseState {
                 s.get_current_hand_mut().cards[i] -= 1;
                 s.table_stack.cards[i] += 1;
                 s.turn = s.turn.next();
-                res.push(s);
+                res.push(Move {
+                    state: s,
+                    desc: MoveDescription::PutSingle(i),
+                });
             }
 
             // Put 4 cards (or 3 nines)
@@ -60,7 +76,10 @@ impl VerboseState {
                 s.get_current_hand_mut().cards[i] -= all_cards_cnt;
                 s.table_stack.cards[i] += all_cards_cnt;
                 s.turn = s.turn.next();
-                res.push(s);
+                res.push(Move {
+                    state: s,
+                    desc: MoveDescription::PutAll(i),
+                });
             }
 
             if self.table_stack.cards[i] != 0 {
@@ -86,11 +105,18 @@ impl VerboseState {
             }
             s.turn = s.turn.next();
             if to_remove_yet < cards_cnt_when_taking_from_stack {
-                res.push(s);
+                res.push(Move {
+                    state: s,
+                    desc: MoveDescription::Take,
+                });
             }
         }
 
         res
+    }
+
+    pub fn following_states(&self) -> Vec<Self> {
+        self.possible_moves().into_iter().map(|m| m.state).collect()
     }
 
     pub fn preceding_states(&self) -> Vec<Self> {

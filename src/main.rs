@@ -1,11 +1,11 @@
 // TODO: maybe lib.rs?
 
+mod game;
 mod playground;
 mod state;
 mod strategy;
-// maybe "mod game" with logic?
 
 fn main() {
-    // println!("Hello, world!");
-    playground::bar();
+    let s = state::VerboseState::random();
+    game::Game::new(s).run()
 }

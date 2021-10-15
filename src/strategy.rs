@@ -107,6 +107,21 @@ impl Optimal {
 
         Self { winning_states }
     }
+
+    pub fn get_winning_turn(&self, vs: &VerboseState) -> Option<Turn> {
+        let s = vs.try_into().unwrap();
+        for t in [Turn::Player, Turn::Opponent] {
+            if self
+                .winning_states
+                .get(&t)
+                .map_or(false, |states| states.contains(&s))
+            {
+                return Some(t);
+            }
+        }
+
+        None
+    }
 }
 
 impl Strategy for Optimal {

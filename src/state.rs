@@ -230,7 +230,8 @@ pub struct CardsHand {
 }
 
 impl CardsHand {
-    const CARD_TYPES: usize = 6;
+    pub const CARD_TYPES: usize = 6;
+    pub const IDX_TO_CHAR: [char; Self::CARD_TYPES] = ['A', 'K', 'Q', 'J', '1', '9'];
 }
 
 // ================ CONVERSIONS ======================
@@ -285,7 +286,7 @@ impl CardsHand {
         }
     }
 
-    fn card_idx_to_cnt(idx: usize) -> usize {
+    pub fn card_idx_to_cnt(idx: usize) -> usize {
         if idx < Self::CARD_TYPES - 1 {
             4
         } else if idx == Self::CARD_TYPES - 1 {

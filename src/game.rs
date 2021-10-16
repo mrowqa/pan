@@ -3,7 +3,7 @@ use crate::{
     strategy::{Optimal, OptimalCache, Strategy},
 };
 use console_engine::{pixel, Color, ConsoleEngine, KeyCode};
-use std::cmp::max;
+use std::cmp::{max, Ordering};
 
 pub struct Game<'a> {
     state: VerboseState,
@@ -20,7 +20,7 @@ pub struct Game<'a> {
 
 impl<'a> Game<'a> {
     const SCREEN_WIDTH: u32 = 30;
-    const SCREEN_HEIGHT: u32 = 12;
+    const SCREEN_HEIGHT: u32 = 16;
     const SCREEN_FPS: u32 = 30;
 
     pub fn new(state: VerboseState, cache: &'a mut OptimalCache) -> Self {
@@ -66,6 +66,7 @@ impl<'a> Game<'a> {
     fn run_logic(&mut self) {
         if !self.game_finished && self.state.is_game_finished() {
             self.game_finished = true;
+            self.last_opponent_move = None;
             self.needs_redrawing = true;
         }
 
@@ -81,6 +82,7 @@ impl<'a> Game<'a> {
             } else if self.state.turn == Turn::Player {
                 if self.player_moves.is_empty() {
                     self.player_moves = self.state.possible_moves();
+                    self.player_moves.sort_unstable_by(cmp_moves_ui_order);
                     assert!(!self.player_moves.is_empty());
                     self.player_move_sel = Some(0);
                     self.needs_redrawing = true;
@@ -89,13 +91,13 @@ impl<'a> Game<'a> {
                 let moves_cnt = self.player_moves.len();
 
                 if self.engine.is_key_pressed(KeyCode::Left) {
-                    self.player_move_sel = self.player_move_sel.map(|idx| (idx + 1) % moves_cnt);
-                    self.needs_redrawing = true;
-                }
-                if self.engine.is_key_pressed(KeyCode::Right) {
                     self.player_move_sel = self
                         .player_move_sel
                         .map(|idx| (idx + moves_cnt - 1) % moves_cnt);
+                    self.needs_redrawing = true;
+                }
+                if self.engine.is_key_pressed(KeyCode::Right) {
+                    self.player_move_sel = self.player_move_sel.map(|idx| (idx + 1) % moves_cnt);
                     self.needs_redrawing = true;
                 }
                 if self.engine.is_key_pressed(KeyCode::Enter) {
@@ -122,10 +124,13 @@ impl<'a> Game<'a> {
         self.print_player_selector_if_plays_cards(7, player_coords);
         self.print_centered(9, "You");
         if self.game_finished {
-            self.print_centered(10, "Game over");
+            self.print_centered(11, "Game over");
         } else {
-            self.print_strategy_state(10);
+            self.print_strategy_state(11);
         }
+        self.engine.print(0, 12, "Controls:");
+        self.engine.print(0, 13, "  Left, Right, Enter: Select");
+        self.engine.print(0, 14, "  Q: Quit");
 
         self.engine.draw();
     }
@@ -210,5 +215,23 @@ impl<'a> Game<'a> {
             Some(Turn::Opponent) => "[S: Opponent]",
         };
         self.engine.print(0, line, strategy_state);
+    }
+}
+
+fn cmp_moves_ui_order(lhs: &Move, rhs: &Move) -> Ordering {
+    match (&lhs.desc, &rhs.desc) {
+        (MoveDescription::Take, MoveDescription::Take) => Ordering::Equal,
+        (MoveDescription::Take, _) => Ordering::Greater,
+        (_, MoveDescription::Take) => Ordering::Less,
+        (MoveDescription::PutSingle(i), MoveDescription::PutSingle(j))
+        | (MoveDescription::PutAll(i), MoveDescription::PutAll(j)) => j.cmp(i),
+        (MoveDescription::PutSingle(i), MoveDescription::PutAll(j)) => match j.cmp(i) {
+            Ordering::Equal => Ordering::Less,
+            ord => ord,
+        },
+        (MoveDescription::PutAll(i), MoveDescription::PutSingle(j)) => match j.cmp(i) {
+            Ordering::Equal => Ordering::Greater,
+            ord => ord,
+        },
     }
 }

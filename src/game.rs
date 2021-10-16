@@ -13,6 +13,7 @@ pub struct Game<'a> {
     last_opponent_move: Option<MoveDescription>,
     player_moves: Vec<Move>,
     player_move_sel: Option<usize>,
+    game_finished: bool,
 
     needs_redrawing: bool,
 }
@@ -30,6 +31,7 @@ impl<'a> Game<'a> {
             Self::SCREEN_FPS,
         )
         .unwrap();
+        let game_finished = state.is_game_finished();
 
         Game {
             state,
@@ -39,6 +41,7 @@ impl<'a> Game<'a> {
             last_opponent_move: None,
             player_moves: vec![],
             player_move_sel: None,
+            game_finished,
 
             needs_redrawing: true,
         }
@@ -51,10 +54,6 @@ impl<'a> Game<'a> {
                 break;
             }
 
-            if self.state.is_game_finished() {
-                break; // TODO: print it somehow
-            }
-
             self.run_logic();
 
             if self.needs_redrawing {
@@ -65,41 +64,48 @@ impl<'a> Game<'a> {
     }
 
     fn run_logic(&mut self) {
-        if self.state.turn == Turn::Opponent {
-            let mov = self
-                .strategy
-                .get_next_move(&self.state)
-                .expect("game not finished");
-            self.last_opponent_move = Some(mov.desc);
-            self.state = mov.state;
+        if !self.game_finished && self.state.is_game_finished() {
+            self.game_finished = true;
             self.needs_redrawing = true;
-        } else if self.state.turn == Turn::Player {
-            if self.player_moves.is_empty() {
-                self.player_moves = self.state.possible_moves();
-                assert!(!self.player_moves.is_empty());
-                self.player_move_sel = Some(0);
-                self.needs_redrawing = true;
-            }
+        }
 
-            let moves_cnt = self.player_moves.len();
+        if !self.game_finished {
+            if self.state.turn == Turn::Opponent {
+                let mov = self
+                    .strategy
+                    .get_next_move(&self.state)
+                    .expect("game not finished");
+                self.last_opponent_move = Some(mov.desc);
+                self.state = mov.state;
+                self.needs_redrawing = true;
+            } else if self.state.turn == Turn::Player {
+                if self.player_moves.is_empty() {
+                    self.player_moves = self.state.possible_moves();
+                    assert!(!self.player_moves.is_empty());
+                    self.player_move_sel = Some(0);
+                    self.needs_redrawing = true;
+                }
 
-            if self.engine.is_key_pressed(KeyCode::Left) {
-                self.player_move_sel = self.player_move_sel.map(|idx| (idx + 1) % moves_cnt);
-                self.needs_redrawing = true;
-            }
-            if self.engine.is_key_pressed(KeyCode::Right) {
-                self.player_move_sel = self
-                    .player_move_sel
-                    .map(|idx| (idx + moves_cnt - 1) % moves_cnt);
-                self.needs_redrawing = true;
-            }
-            if self.engine.is_key_pressed(KeyCode::Enter) {
-                self.state = self.player_moves[self.player_move_sel.unwrap()]
-                    .state
-                    .clone();
-                self.player_moves.clear();
-                self.player_move_sel = None;
-                self.needs_redrawing = true;
+                let moves_cnt = self.player_moves.len();
+
+                if self.engine.is_key_pressed(KeyCode::Left) {
+                    self.player_move_sel = self.player_move_sel.map(|idx| (idx + 1) % moves_cnt);
+                    self.needs_redrawing = true;
+                }
+                if self.engine.is_key_pressed(KeyCode::Right) {
+                    self.player_move_sel = self
+                        .player_move_sel
+                        .map(|idx| (idx + moves_cnt - 1) % moves_cnt);
+                    self.needs_redrawing = true;
+                }
+                if self.engine.is_key_pressed(KeyCode::Enter) {
+                    self.state = self.player_moves[self.player_move_sel.unwrap()]
+                        .state
+                        .clone();
+                    self.player_moves.clear();
+                    self.player_move_sel = None;
+                    self.needs_redrawing = true;
+                }
             }
         }
     }
@@ -115,7 +121,11 @@ impl<'a> Game<'a> {
         let player_coords = self.print_hand(8, |s| &s.state.player_hand);
         self.print_player_selector_if_plays_cards(7, player_coords);
         self.print_centered(9, "You");
-        self.print_strategy_state(10);
+        if self.game_finished {
+            self.print_centered(10, "Game over");
+        } else {
+            self.print_strategy_state(10);
+        }
 
         self.engine.draw();
     }

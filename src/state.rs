@@ -1,19 +1,18 @@
 use lazy_static::lazy_static;
 use rand::{seq::SliceRandom, thread_rng};
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::{min, Ordering},
     collections::HashMap,
     convert::TryFrom,
 };
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct State {
     cards: [u8; 3],
     turn: Turn,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub enum Turn {
     Player,
     Opponent,

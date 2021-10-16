@@ -11,6 +11,7 @@ fn main() {
     let state = state::VerboseState::random();
     let mut cache = strategy::OptimalCache::new();
 
+    println!("Trying to load cache if present.");
     if let Err(err) = cache.load_from_disk(CACHE_PATH) {
         eprintln!("Error while loading cache: {}", err)
     };
@@ -23,3 +24,7 @@ fn main() {
         eprintln!("Error while saving cache: {}", err);
     }
 }
+
+// TODO:
+// - displaying strategy state does not work
+// - displayed 3 nines instead of 4 (the immovable nine on the bottom of the stack is not displayed, i guess)

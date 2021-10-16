@@ -3,7 +3,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     convert::{TryFrom, TryInto},
-    fs::{self, File},
+    fs,
     mem::swap,
     path::Path,
 };
@@ -165,6 +165,9 @@ pub struct OptimalCache {
     states: OptimalWinningStates,
 }
 
+const OPTIMAL_SERIALIZATION_ORDER: [Option<Turn>; 3] =
+    [Some(Turn::Player), Some(Turn::Opponent), None];
+
 impl OptimalCache {
     pub fn new() -> Self {
         Self {
@@ -173,15 +176,47 @@ impl OptimalCache {
     }
 
     pub fn load_from_disk(&mut self, path: impl AsRef<Path>) -> Result<(), String> {
-        let file = File::open(path.as_ref()).map_err(|e| e.to_string())?;
-        self.states = rmp_serde::from_read(file).map_err(|e| e.to_string())?;
+        let cache = fs::read(path.as_ref()).map_err(|e| e.to_string())?;
+        if cache.len() % 4 != 0 {
+            return Err("Malformed cache (expected sequence of 32-bit values).".to_string());
+        }
+
+        let mut remaining;
+        let mut it = cache.as_slice().chunks_exact(4).map(|chunk| {
+            let arr = chunk.try_into().unwrap();
+            u32::from_le_bytes(arr)
+        });
+
+        for t in &OPTIMAL_SERIALIZATION_ORDER {
+            remaining = it.next().ok_or_else(|| "Expected a number".to_string())?;
+            for _ in 0..remaining {
+                let num = it.next().ok_or_else(|| "Expected a number".to_string())?;
+                let state = unsafe { std::mem::transmute(num) }; // TODO: might be done without unsafe
+                self.states.entry(*t).or_default().insert(state);
+            }
+        }
+
+        if !matches!(it.next(), None) {
+            return Err("Unknown trailing data".to_string());
+        }
 
         Ok(())
     }
 
     pub fn save_to_disk(&self, path: impl AsRef<Path>) -> Result<(), String> {
-        let data = rmp_serde::to_vec(&self.states).map_err(|e| e.to_string())?;
-        fs::write(path.as_ref(), data).map_err(|e| e.to_string())?;
+        let mut buf = vec![];
+
+        let empty_hashset = HashSet::new();
+        for t in &OPTIMAL_SERIALIZATION_ORDER {
+            let elems = self.states.get(t).unwrap_or(&empty_hashset);
+            buf.extend_from_slice(&elems.len().to_le_bytes());
+            for e in elems {
+                let num: u32 = unsafe { std::mem::transmute(*e) };
+                buf.extend_from_slice(&num.to_le_bytes());
+            }
+        }
+
+        fs::write(path.as_ref(), &buf).map_err(|e| e.to_string())?;
 
         Ok(())
     }

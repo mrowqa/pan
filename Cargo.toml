@@ -9,5 +9,3 @@ edition = "2018"
 lazy_static = "1.4"
 rand = "0.8"
 console_engine = "2.0"
-serde = { version = "1.0", features = ["derive"] }
-rmp-serde = "0.15"

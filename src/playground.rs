@@ -50,8 +50,8 @@ pub fn foo() {
 }
 
 pub fn bar() {
-    let start_state = VerboseState::random();
-    let _optimal = Optimal::new(&start_state);
+    let _start_state = VerboseState::random();
+    // let _optimal = Optimal::new(&start_state);
 }
 
 pub fn engine_example() {

@@ -3,6 +3,9 @@ use rand::{seq::SliceRandom, thread_rng};
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     convert::{TryFrom, TryInto},
+    fs::{self, File},
+    mem::swap,
+    path::Path,
 };
 
 pub trait Strategy {
@@ -18,124 +21,132 @@ impl Strategy for Random {
     }
 }
 
-pub struct Optimal {
-    winning_states: OptimalWinningStates,
+pub struct Optimal<'a> {
+    cache: &'a OptimalCache,
 }
 
 // Cannot be put inside `impl Optimal`: it is unstable.
-type OptimalWinningStates = BTreeMap<Turn, HashSet<State>>;
+type OptimalWinningStates = BTreeMap<Option<Turn>, HashSet<State>>;
 
-impl Optimal {
+impl<'a> Optimal<'a> {
     // Consider: paralelize construction? Or maybe keep some cache of states?
-    pub fn new(start_state: &VerboseState) -> Self {
-        let mut reachable_states = HashSet::new();
-        let mut winning_states = OptimalWinningStates::new();
+    pub fn new_with_mut_cache(start_state: &VerboseState, cache: &'a mut OptimalCache) -> Self {
+        let mut new_reachable_states = HashSet::new();
         let mut queue = VecDeque::new();
+        let mut next_queue = VecDeque::new();
 
-        // Phase 1: find all reachable states.
+        // Phase 1: find all reachable states (unknown to already built cache).
         let start_state = start_state.try_into().expect("Valid start_state"); // expect: Not ideal, but should be good enough.
         queue.push_back(start_state);
-        reachable_states.insert(start_state);
+        if cache.get_state_winningness(start_state).is_none() {
+            new_reachable_states.insert(start_state);
+        }
         // No need to classify start_state as winning or losing - there is no move from such starting state anyway.
         while let Some(s) = queue.pop_front() {
             let following_states = VerboseState::from(s).possible_moves();
             for mov in following_states {
                 let s = State::try_from(&mov.state).unwrap();
-                if reachable_states.contains(&s) {
+                if new_reachable_states.contains(&s) || cache.get_state_winningness(s).is_some() {
                     continue;
                 }
-                reachable_states.insert(s);
+                new_reachable_states.insert(s);
                 queue.push_back(s);
 
                 if mov.state.player_hand == CardsHand::EMPTY {
-                    winning_states.entry(Turn::Player).or_default().insert(s);
+                    cache
+                        .states
+                        .entry(Some(Turn::Player))
+                        .or_default()
+                        .insert(s);
+                    next_queue.push_back(s);
                 } else if mov.state.opponent_hand == CardsHand::EMPTY {
-                    winning_states.entry(Turn::Opponent).or_default().insert(s);
+                    cache
+                        .states
+                        .entry(Some(Turn::Opponent))
+                        .or_default()
+                        .insert(s);
+                    next_queue.push_back(s);
                 }
             }
         }
 
         // Phase 2: propagate down winning states.
+        swap(&mut queue, &mut next_queue);
         let add_preceding_states = |queue: &mut VecDeque<_>, s: &State| {
             for vs in VerboseState::from(*s).preceding_states() {
                 let s = State::try_from(vs).unwrap();
-                if reachable_states.contains(&s) {
+                if new_reachable_states.contains(&s) {
                     queue.push_back(s);
                 }
             }
         };
-        for t in [Turn::Player, Turn::Opponent] {
-            for s in &winning_states[&t] {
-                add_preceding_states(&mut queue, s);
-            }
-        }
 
         let mut winning_cnts = BTreeMap::<_, usize>::new();
         while let Some(s) = queue.pop_front() {
-            if winning_states[&Turn::Player].contains(&s)
-                || winning_states[&Turn::Opponent].contains(&s)
+            if cache.states[&Some(Turn::Player)].contains(&s)
+                || cache.states[&Some(Turn::Opponent)].contains(&s)
             {
                 continue;
             }
 
             let vs = VerboseState::from(s);
-            let fs = vs.possible_moves();
+            let pm = vs.possible_moves();
             winning_cnts.clear();
 
-            for mov in &fs {
+            for mov in &pm {
                 let next_s = State::try_from(&mov.state).unwrap();
                 for t in [Turn::Player, Turn::Opponent] {
-                    if winning_states[&t].contains(&next_s) {
+                    if cache.states[&Some(t)].contains(&next_s) {
                         *winning_cnts.entry(t).or_default() += 1;
                     }
                 }
             }
 
             if winning_cnts.get(&vs.turn).copied().unwrap_or_default() > 0 {
-                winning_states.entry(vs.turn).or_default().insert(s);
+                cache.states.entry(Some(vs.turn)).or_default().insert(s);
                 add_preceding_states(&mut queue, &s);
             } else if winning_cnts
                 .get(&vs.turn.next())
                 .copied()
                 .unwrap_or_default()
-                == fs.len()
+                == pm.len()
             {
-                winning_states.entry(vs.turn.next()).or_default().insert(s);
+                cache
+                    .states
+                    .entry(Some(vs.turn.next()))
+                    .or_default()
+                    .insert(s);
                 add_preceding_states(&mut queue, &s);
             }
         }
 
-        Self { winning_states }
+        // Add all remaining states as draw ones.
+        for s in &new_reachable_states {
+            if cache.get_state_winningness(*s).is_none() {
+                cache.states.entry(None).or_default().insert(*s);
+            }
+        }
+
+        Self { cache }
     }
 
     pub fn get_winning_turn(&self, vs: &VerboseState) -> Option<Turn> {
         let s = vs.try_into().unwrap();
-        for t in [Turn::Player, Turn::Opponent] {
-            if self
-                .winning_states
-                .get(&t)
-                .map_or(false, |states| states.contains(&s))
-            {
-                return Some(t);
-            }
-        }
-
-        None
+        self.cache
+            .get_state_winningness(s)
+            .expect("Properly initialized strategy.")
     }
 }
 
-impl Strategy for Optimal {
+impl<'a> Strategy for Optimal<'a> {
     fn get_next_move(&self, state: &VerboseState) -> Option<Move> {
         let (mut win, mut draw, mut lose) = (vec![], vec![], vec![]);
         let moves = state.possible_moves();
         for m in moves {
-            let s = State::try_from(&m.state).unwrap();
-            if self.winning_states[&state.turn].contains(&s) {
-                win.push(m);
-            } else if self.winning_states[&state.turn.next()].contains(&s) {
-                lose.push(m);
-            } else {
-                draw.push(m);
+            match self.get_winning_turn(&m.state) {
+                None => draw.push(m),
+                Some(t) if t == state.turn => win.push(m),
+                _ => lose.push(m),
             }
         }
 
@@ -147,5 +158,47 @@ impl Strategy for Optimal {
         } else {
             lose.choose(&mut rng).cloned()
         }
+    }
+}
+
+pub struct OptimalCache {
+    states: OptimalWinningStates,
+}
+
+impl OptimalCache {
+    pub fn new() -> Self {
+        Self {
+            states: OptimalWinningStates::new(),
+        }
+    }
+
+    pub fn load_from_disk(&mut self, path: impl AsRef<Path>) -> Result<(), String> {
+        let file = File::open(path.as_ref()).map_err(|e| e.to_string())?;
+        self.states = rmp_serde::from_read(file).map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    pub fn save_to_disk(&self, path: impl AsRef<Path>) -> Result<(), String> {
+        let data = rmp_serde::to_vec(&self.states).map_err(|e| e.to_string())?;
+        fs::write(path.as_ref(), data).map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    // first option - if in cache
+    // second option - None - draw, Some(t) - t wins
+    fn get_state_winningness(&self, state: State) -> Option<Option<Turn>> {
+        for t in [Some(Turn::Player), Some(Turn::Opponent), None] {
+            if self
+                .states
+                .get(&t)
+                .map_or(false, |col| col.contains(&state))
+            {
+                return Some(t);
+            }
+        }
+
+        None
     }
 }

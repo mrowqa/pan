@@ -1,13 +1,13 @@
 use crate::{
     state::{CardsHand, Move, MoveDescription, Turn, VerboseState},
-    strategy::{Optimal, Strategy},
+    strategy::{Optimal, OptimalCache, Strategy},
 };
 use console_engine::{pixel, Color, ConsoleEngine, KeyCode};
 use std::cmp::max;
 
-pub struct Game {
+pub struct Game<'a> {
     state: VerboseState,
-    strategy: Optimal,
+    strategy: Optimal<'a>,
     engine: ConsoleEngine,
 
     last_opponent_move: Option<MoveDescription>,
@@ -17,15 +17,13 @@ pub struct Game {
     needs_redrawing: bool,
 }
 
-impl Game {
+impl<'a> Game<'a> {
     const SCREEN_WIDTH: u32 = 30;
     const SCREEN_HEIGHT: u32 = 12;
     const SCREEN_FPS: u32 = 30;
 
-    pub fn new(state: VerboseState) -> Game {
-        // println!("tmp: calculating..."); // TODO...
-        let strategy = Optimal::new(&state); // TODO: print "Calculating strategy, please wait..."
-                                             // println!("tmp: done"); // TODO...
+    pub fn new(state: VerboseState, cache: &'a mut OptimalCache) -> Self {
+        let strategy = Optimal::new_with_mut_cache(&state, cache);
         let engine = console_engine::ConsoleEngine::init(
             Self::SCREEN_WIDTH,
             Self::SCREEN_HEIGHT,

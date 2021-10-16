@@ -221,6 +221,14 @@ impl OptimalCache {
         Ok(())
     }
 
+    pub fn len(&self) -> usize {
+        let mut len = 0;
+        for (_, v) in self.states.iter() {
+            len += v.len();
+        }
+        len
+    }
+
     // first option - if in cache
     // second option - None - draw, Some(t) - t wins
     fn get_state_winningness(&self, state: State) -> Option<Option<Turn>> {

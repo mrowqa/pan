@@ -16,12 +16,16 @@ fn main() {
         eprintln!("Error while loading cache: {}", err)
     };
 
+    let cache_len = cache.len();
+
     println!("If cache is not built up, calculating strategy may take a few minutes.");
     game::Game::new(state, &mut cache).run();
 
-    // In theory might be saved right after calculating the strategy, but it does not matter much.
-    if let Err(err) = cache.save_to_disk(CACHE_PATH) {
-        eprintln!("Error while saving cache: {}", err);
+    if cache.len() != cache_len {
+        // In theory might be saved right after calculating the strategy, but it does not matter much.
+        if let Err(err) = cache.save_to_disk(CACHE_PATH) {
+            eprintln!("Error while saving cache: {}", err);
+        }
     }
 }
 

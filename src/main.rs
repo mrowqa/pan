@@ -26,5 +26,4 @@ fn main() {
 }
 
 // TODO:
-// - displaying strategy state does not work
-// - displayed 3 nines instead of 4 (the immovable nine on the bottom of the stack is not displayed, i guess)
+// - displaying strategy state does not work (or maybe strategy does not work?)

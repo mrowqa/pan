@@ -128,6 +128,10 @@ impl<'a> Game<'a> {
 
     fn print_hand(&mut self, line: i32, get_hand: fn(&Self) -> &CardsHand) -> (i32, i32) {
         let mut hand_str = String::new(); // might be optimized
+        if &self.state.table_stack == get_hand(self) {
+            // Table stack nine is not taken into account.
+            hand_str.push(CardsHand::IDX_TO_CHAR[CardsHand::CARD_TYPES - 1]);
+        }
         for i in (0..CardsHand::CARD_TYPES).rev() {
             let hand = get_hand(self);
             for _ in 0..hand.cards[i] {

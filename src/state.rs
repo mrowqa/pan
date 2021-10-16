@@ -1,7 +1,11 @@
 use lazy_static::lazy_static;
 use rand::{seq::SliceRandom, thread_rng};
 use serde::{Deserialize, Serialize};
-use std::{cmp::min, collections::HashMap, convert::TryFrom};
+use std::{
+    cmp::{min, Ordering},
+    collections::HashMap,
+    convert::TryFrom,
+};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub struct State {
@@ -116,6 +120,7 @@ impl VerboseState {
         res
     }
 
+    #[allow(dead_code)] // Was used in playground.
     pub fn following_states(&self) -> Vec<Self> {
         self.possible_moves().into_iter().map(|m| m.state).collect()
     }
@@ -192,9 +197,10 @@ impl VerboseState {
                 Some(c) => (c, true),
                 None => (CardsHand::CARD_TYPES - 1, false),
             };
+            let mut selff = selff;
             process_one_card(
                 &mut res,
-                &mut selff.clone(),
+                &mut selff,
                 top_card,
                 all_cards_req,
                 CARDS_CNT_WHEN_TAKING_FROM_STACK,
@@ -268,32 +274,26 @@ fn gen_card_distr(sum: u8) -> Vec<(u8, u8, u8)> {
 
 impl CardsHand {
     fn card_idx_to_distr(idx: usize) -> &'static Vec<(u8, u8, u8)> {
-        if idx < Self::CARD_TYPES - 1 {
-            &*CARD_DISTR_4
-        } else if idx == Self::CARD_TYPES - 1 {
-            &*CARD_DISTR_3
-        } else {
-            panic!("Invalid idx")
+        match idx.cmp(&(Self::CARD_TYPES - 1)) {
+            Ordering::Less => &*CARD_DISTR_4,
+            Ordering::Equal => &*CARD_DISTR_3,
+            Ordering::Greater => panic!("Invalid idx"),
         }
     }
 
     fn card_idx_to_rev_distr(idx: usize) -> &'static HashMap<(u8, u8, u8), u8> {
-        if idx < Self::CARD_TYPES - 1 {
-            &*REV_CARD_DISTR_4
-        } else if idx == Self::CARD_TYPES - 1 {
-            &*REV_CARD_DISTR_3
-        } else {
-            panic!("Invalid idx")
+        match idx.cmp(&(Self::CARD_TYPES - 1)) {
+            Ordering::Less => &*REV_CARD_DISTR_4,
+            Ordering::Equal => &*REV_CARD_DISTR_3,
+            Ordering::Greater => panic!("Invalid idx"),
         }
     }
 
     pub fn card_idx_to_cnt(idx: usize) -> usize {
-        if idx < Self::CARD_TYPES - 1 {
-            4
-        } else if idx == Self::CARD_TYPES - 1 {
-            3
-        } else {
-            panic!("Invalid idx")
+        match idx.cmp(&(Self::CARD_TYPES - 1)) {
+            Ordering::Less => 4,
+            Ordering::Equal => 3,
+            Ordering::Greater => panic!("Invalid idx"),
         }
     }
 }
@@ -362,6 +362,7 @@ impl CardsHand {
 }
 
 impl VerboseState {
+    #[allow(dead_code)]
     pub fn initial() -> Self {
         Self {
             player_hand: CardsHand {

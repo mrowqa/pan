@@ -207,12 +207,13 @@ impl OptimalCache {
         let mut buf = vec![];
 
         let empty_hashset = HashSet::new();
+        let mut write_u32_to_buf = |num: u32| buf.extend_from_slice(&num.to_le_bytes());
         for t in &OPTIMAL_SERIALIZATION_ORDER {
             let elems = self.states.get(t).unwrap_or(&empty_hashset);
-            buf.extend_from_slice(&elems.len().to_le_bytes());
+            write_u32_to_buf(elems.len().try_into().unwrap());
             for e in elems {
                 let num: u32 = unsafe { std::mem::transmute(*e) };
-                buf.extend_from_slice(&num.to_le_bytes());
+                write_u32_to_buf(num);
             }
         }
 

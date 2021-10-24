@@ -4,7 +4,6 @@ use std::{
     collections::{BTreeMap, HashSet, VecDeque},
     convert::{TryFrom, TryInto},
     fs,
-    mem::swap,
     path::Path,
 };
 
@@ -33,7 +32,7 @@ impl<'a> Optimal<'a> {
     pub fn new_with_mut_cache(start_state: &VerboseState, cache: &'a mut OptimalCache) -> Self {
         let mut new_reachable_states = HashSet::new();
         let mut queue = VecDeque::new();
-        let mut next_queue = VecDeque::new();
+        let mut winning_queue = VecDeque::new();
 
         // Phase 1: find all reachable states (unknown to already built cache).
         let start_state = start_state.try_into().expect("Valid start_state"); // expect: Not ideal, but should be good enough.
@@ -58,28 +57,30 @@ impl<'a> Optimal<'a> {
                         .entry(Some(Turn::Player))
                         .or_default()
                         .insert(s);
-                    next_queue.push_back(s);
+                    winning_queue.push_back(s);
                 } else if mov.state.opponent_hand == CardsHand::EMPTY {
                     cache
                         .states
                         .entry(Some(Turn::Opponent))
                         .or_default()
                         .insert(s);
-                    next_queue.push_back(s);
+                    winning_queue.push_back(s);
                 }
             }
         }
 
         // Phase 2: propagate down winning states.
-        swap(&mut queue, &mut next_queue);
-        let add_preceding_states = |queue: &mut VecDeque<_>, s: &State| {
-            for vs in VerboseState::from(*s).preceding_states() {
+        let add_preceding_states = |queue: &mut VecDeque<_>, s: State| {
+            for vs in VerboseState::from(s).preceding_states() {
                 let s = State::try_from(vs).unwrap();
                 if new_reachable_states.contains(&s) {
                     queue.push_back(s);
                 }
             }
         };
+        while let Some(s) = winning_queue.pop_front() {
+            add_preceding_states(&mut queue, s);
+        }
 
         let mut winning_cnts = BTreeMap::<_, usize>::new();
         while let Some(s) = queue.pop_front() {
@@ -104,7 +105,7 @@ impl<'a> Optimal<'a> {
 
             if winning_cnts.get(&vs.turn).copied().unwrap_or_default() > 0 {
                 cache.states.entry(Some(vs.turn)).or_default().insert(s);
-                add_preceding_states(&mut queue, &s);
+                add_preceding_states(&mut queue, s);
             } else if winning_cnts
                 .get(&vs.turn.next())
                 .copied()
@@ -116,7 +117,7 @@ impl<'a> Optimal<'a> {
                     .entry(Some(vs.turn.next()))
                     .or_default()
                     .insert(s);
-                add_preceding_states(&mut queue, &s);
+                add_preceding_states(&mut queue, s);
             }
         }
 

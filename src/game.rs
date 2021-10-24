@@ -143,7 +143,7 @@ impl<'a> Game<'a> {
 
     fn print_hand(&mut self, line: i32, get_hand: fn(&Self) -> &CardsHand) -> (i32, i32) {
         let mut hand_str = String::new(); // might be optimized
-        if &self.state.table_stack == get_hand(self) {
+        if &self.state.table_stack as *const _ == get_hand(self) as *const _ {
             // Table stack nine is not taken into account.
             hand_str.push(CardsHand::IDX_TO_CHAR[CardsHand::CARD_TYPES - 1]);
         }
